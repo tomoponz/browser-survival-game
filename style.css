@@ -14,3 +14,23 @@ html, body {
 canvas {
   display: block;
 }
+
+
+#err{
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  max-height: 44vh;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(0,0,0,.55);
+  color: #e8f2ff;
+  font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  white-space: pre-wrap;
+  display: none;
+  z-index: 99999;
+}

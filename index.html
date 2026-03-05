@@ -10,6 +10,57 @@
 </head>
 <body>
   <div id="game"></div>
-  <script type="module" src="./src/main.js"></script>
+
+  <!-- visible error overlay (so “真っ暗”の原因が分かる) -->
+  <pre id="err" aria-live="polite"></pre>
+
+  <script>
+    (function () {
+      const el = document.getElementById('err');
+      function show(msg) {
+        el.style.display = 'block';
+        el.textContent = String(msg || 'Unknown error');
+      }
+      function hide() { el.style.display = 'none'; el.textContent = ''; }
+      window.__showGameError = show;
+      window.__hideGameError = hide;
+
+      window.addEventListener('error', (e) => {
+        const msg = e && e.error ? (e.error.stack || e.error.message || e.error) : (e.message || e);
+        show('[JS Error]\n' + msg);
+      });
+
+      window.addEventListener('unhandledrejection', (e) => {
+        const r = e && e.reason;
+        const msg = r ? (r.stack || r.message || r) : e;
+        show('[Promise Rejection]\n' + msg);
+      });
+    })();
+  </script>
+
+  <script type="module">
+    const show = window.__showGameError;
+    const hide = window.__hideGameError;
+
+    // Phaser CDN が落ちてたらここで分かる
+    if (!window.Phaser) {
+      show('[Phaser Load Error]\nPhaser が読み込めていません。\nネットワーク/拡張機能/広告ブロッカーを確認してください。');
+      throw new Error('Phaser is not loaded');
+    }
+
+    // まずは ES Modules 版（最新版）
+    try {
+      await import('./src/main.js');
+      hide();
+    } catch (err) {
+      // Module が 404 / MIME / case mismatch などで死ぬと真っ暗になるので、原因を表示してフォールバックする
+      show('[Module Load Failed]\n' + (err?.stack || err?.message || err) + '\n\n→ 旧版(main.js)で起動します（応急処置）');
+      const s = document.createElement('script');
+      s.src = './main.js';
+      s.onload = () => show(document.getElementById('err').textContent + '\n\n(main.js 起動完了)');
+      s.onerror = () => show(document.getElementById('err').textContent + '\n\n(main.js の読み込みにも失敗しました)');
+      document.body.appendChild(s);
+    }
+  </script>
 </body>
 </html>
