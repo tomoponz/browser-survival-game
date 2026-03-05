@@ -20,7 +20,7 @@ export class GameScene extends Phaser.Scene {
     critChance: 0.12,
     critMul: 1.8,
 
-    // aura
+    // aura (Gemini案: 回転オーラ)
     auraEnabled: true,
     auraCount: 2,
     auraRadius: 52,
@@ -56,7 +56,7 @@ export class GameScene extends Phaser.Scene {
     hitStopMs: 28,
     hitStopScale: 0.0001,
 
-    // boss
+    // boss (Gemini案: ボス)
     bossFirstSec: 60,        // 1分後
     bossEverySec: 90,        // 以降の間隔
     bossHpMul: 18,
@@ -68,28 +68,50 @@ export class GameScene extends Phaser.Scene {
     bossContactDamage: 22
   };
 
-  // 音量（必要ならここだけ調整）
-  VOL = {
-    shoot: 0.25,
-    xp: 0.35,
-    hurt: 0.55,
-    level: 0.55,
-    gameOver: 0.8,
-    bgm: 0.22
-  };
-
   // ----------------- Lifecycle -----------------
   preload() {
-    // 日本語/記号入りファイル名のため encodeURI して安全に読む
-    const P = (s) => encodeURI(s);
+    // --- SFX/BGM ---
+    // GitHub Pages / Windows / zip展開環境で、ファイル名のエンコーディングが崩れることがあるため
+    // 「日本語名」と「#Uxxxx 形式」の両方を候補としてロードする。
+    const urlSafe = (p) => encodeURI(p).replace(/#/g, "%23");
 
-    // 追加された音声素材
-    this.load.audio("s_hurt", P("assets/sfx/nc159798_【SE】打撃音_2【ドゥクシ!】.wav"));
-    this.load.audio("s_level", P("assets/sfx/nc205000_ファミコン系_ドラクエ_レベルアップ音.wav"));
-    this.load.audio("s_xp", P("assets/sfx/nc23750_コインを取る音.wav"));
-    this.load.audio("s_shoot", P("assets/sfx/nc25721_乾いた発砲音.wav"));
-    this.load.audio("bgm_main", P("assets/sfx/nc29206_Herod.mp3"));
-    this.load.audio("s_gameover", P("assets/sfx/nc99869_【パズドラ】ゲームオーバー.wav"));
+    const paths = {
+      // 被弾
+      hit: [
+        "assets/sfx/nc159798_【SE】打撃音_2【ドゥクシ!】.wav",
+        "assets/sfx/nc159798_#U3010SE#U3011#U6253#U6483#U97f3_2#U3010#U30c9#U30a5#U30af#U30b7!#U3011.wav"
+      ],
+      // レベルアップ
+      level: [
+        "assets/sfx/nc205000_ファミコン系_ドラクエ_レベルアップ音.wav",
+        "assets/sfx/nc205000_#U30d5#U30a1#U30df#U30b3#U30f3#U7cfb_#U30c9#U30e9#U30af#U30a8_#U30ec#U30d9#U30eb#U30a2#U30c3#U30d7#U97f3.wav"
+      ],
+      // 経験値獲得
+      coin: [
+        "assets/sfx/nc23750_コインを取る音.wav",
+        "assets/sfx/nc23750_#U30b3#U30a4#U30f3#U3092#U53d6#U308b#U97f3.wav"
+      ],
+      // 発砲（連射なので控えめに鳴らす）
+      shot: [
+        "assets/sfx/nc25721_乾いた発砲音.wav",
+        "assets/sfx/nc25721_#U4e7e#U3044#U305f#U767a#U7832#U97f3.wav"
+      ],
+      // ゲームオーバー
+      over: [
+        "assets/sfx/nc99869_【パズドラ】ゲームオーバー.wav",
+        "assets/sfx/nc99869_#U3010#U30d1#U30ba#U30c9#U30e9#U3011#U30b2#U30fc#U30e0#U30aa#U30fc#U30d0#U30fc.wav"
+      ],
+      // BGM（任意）
+      bgm: ["assets/sfx/nc29206_Herod.mp3"]
+    };
+
+    // Phaser Loader は配列URLを順番に試してくれる
+    this.load.audio("sfx_hit", paths.hit.map(urlSafe));
+    this.load.audio("sfx_level", paths.level.map(urlSafe));
+    this.load.audio("sfx_coin", paths.coin.map(urlSafe));
+    this.load.audio("sfx_shot", paths.shot.map(urlSafe));
+    this.load.audio("sfx_over", paths.over.map(urlSafe));
+    this.load.audio("bgm_main", paths.bgm.map(urlSafe));
   }
 
   create() {
@@ -130,17 +152,23 @@ export class GameScene extends Phaser.Scene {
     // textures (procedural; 素材ゼロ)
     this.makeTextures();
 
+    // audio (iOS/Safari対策：最初のタップでunlock)
+    const safeAdd = (key, cfg) => (this.cache.audio.exists(key) ? this.sound.add(key, cfg) : null);
+    this.sfx = {
+      hit: safeAdd("sfx_hit", { volume: 0.7 }),
+      level: safeAdd("sfx_level", { volume: 0.8 }),
+      coin: safeAdd("sfx_coin", { volume: 0.65 }),
+      shot: safeAdd("sfx_shot", { volume: 0.25 }),
+      over: safeAdd("sfx_over", { volume: 0.85 }),
+      bgm: safeAdd("bgm_main", { volume: 0.25, loop: true })
+    };
+    this._shotSfxAt = 0;
+    this._bgmStarted = false;
+
     // groups (pool)
     this.bullets = this.physics.add.group({ defaultKey: "bullet", maxSize: 700 });
     this.enemies = this.physics.add.group({ defaultKey: "enemy", maxSize: this.T.enemyMax });
-
-    // gemは物理不要だが、GroupのclassTypeを指定して確実にImageが生成されるようにする
-    this.gems = this.add.group({
-      defaultKey: "gem",
-      classType: Phaser.GameObjects.Image,
-      maxSize: 800
-    });
-
+    this.gems = this.add.group({ defaultKey: "gem", maxSize: 800 }); // gemは物理不要
     this.enemyShots = this.physics.add.group({ defaultKey: "shot", maxSize: 260 }); // boss弾
 
     // damage number pool
@@ -155,7 +183,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setCollideWorldBounds(true);
     this.player.invuln = 0;
 
-    // aura weapon
+    // aura weapon (Gemini案)
     this.auraParts = [];
     this.auraHitCD = new Map(); // enemyId -> lastHitTime
     this.initAura();
@@ -205,7 +233,7 @@ export class GameScene extends Phaser.Scene {
 
     this.uiGfx = this.add.graphics().setDepth(9999);
 
-    // freeze overlay
+    // freeze overlay (Gemini案：時間停止中の画面エフェクト)
     this.freezeOverlay = this.add.rectangle(0, 0, W, H, 0x0b1220, 0.0).setOrigin(0).setDepth(5000);
     this.vignette = this.add.graphics().setDepth(5001);
     this.redrawVignette();
@@ -218,28 +246,32 @@ export class GameScene extends Phaser.Scene {
     });
     this.physics.world.setBounds(0, 0, W, H);
 
-    // --------- AUDIO SETUP（追加）---------
-    this.lastXpSfxAt = 0;   // コイン音の連打を少し抑える
-    this.lastShootSfxAt = 0;
+    // RESIZEモードは画面サイズが変わるので、ワールド境界も追随させる（境界ズレ＝ワープっぽく見える）
+    this.scale.on("resize", (gameSize) => {
+      const { width, height } = gameSize;
+      this.physics.world.setBounds(0, 0, width, height);
+      // ついでにプレイヤーが外に出てたら内側へ戻す
+      this.player.x = Phaser.Math.Clamp(this.player.x, 0, width);
+      this.player.y = Phaser.Math.Clamp(this.player.y, 0, height);
+    });
 
-    // BGM（ブラウザ制約対策：ユーザー操作後に再生）
-    this.bgm = this.sound.add("bgm_main", { volume: this.VOL.bgm, loop: true });
-
-    // クリックでフォーカス確保 + 1回目のクリックでBGM開始
-    if (!this.sound.locked) {
-      if (!this.bgm.isPlaying) this.bgm.play();
-    } else {
-      this.input.once("pointerdown", () => {
-        if (!this.bgm.isPlaying) this.bgm.play();
-      });
-    }
-
-    this.input.on("pointerdown", () => this.game.canvas?.focus?.());
+    // click to focus + audio unlock (iOS/ブラウザでキー取りこぼし防止)
+    this.input.on("pointerdown", () => {
+      this.game.canvas?.focus?.();
+      if (this.sound.locked) this.sound.unlock();
+      if (!this._bgmStarted) {
+        // BGMは好みが分かれるので「最初の操作」以降に開始
+        this._bgmStarted = true;
+        this.sfx.bgm?.play?.();
+      }
+    });
 
     this.drawUI();
   }
 
   update(_, dtMs) {
+    // タブ切替/負荷/リサイズ直後などで dt が跳ねると「瞬間移動」に見えるので上限をかける
+    dtMs = Math.min(dtMs, 50);
     const dt = dtMs / 1000;
 
     if (this.S.gameOver) {
@@ -310,7 +342,7 @@ export class GameScene extends Phaser.Scene {
       else e.setAlpha(1.0);
     });
 
-    // ---- boss shots slowed by freeze ----
+    // ---- boss shots slowed by freeze (baseV*mul) ----
     this.enemyShots.children.iterate(s => {
       if (!s || !s.active) return;
       const mul = wantFreeze ? this.T.freezeFactor : 1.0;
@@ -319,7 +351,7 @@ export class GameScene extends Phaser.Scene {
       if (s.life <= 0) this.killObj(s);
     });
 
-    // ---- gems magnet + pickup（追加：経験値取得が確実に動く） ----
+    // ---- gems magnet ----
     const { width: W, height: H } = this.scale;
     this.gems.children.iterate(g => {
       if (!g || !g.active) return;
@@ -328,25 +360,32 @@ export class GameScene extends Phaser.Scene {
       const dy = this.player.y - g.y;
       const d = Math.hypot(dx, dy);
 
-      // pickup
-      if (d < 18) {
-        this.collectGem(g);
-        return;
-      }
-
       if (d < this.T.magnet) {
         const ux = dx / (d || 1), uy = dy / (d || 1);
-        g.vx = (g.vx || 0) * 0.86 + ux * 620 * dt;
-        g.vy = (g.vy || 0) * 0.86 + uy * 620 * dt;
-        g.x += g.vx; g.y += g.vy;
+        // px/sec として速度を持ち、dtで積分（dtの跳ねでワープしない）
+        g.vx = (g.vx || 0) * 0.86 + ux * 820;
+        g.vy = (g.vy || 0) * 0.86 + uy * 820;
+        const vmax = 900;
+        g.vx = Phaser.Math.Clamp(g.vx, -vmax, vmax);
+        g.vy = Phaser.Math.Clamp(g.vy, -vmax, vmax);
+        g.x += g.vx * dt; g.y += g.vy * dt;
       } else {
         g.y += 10 * dt;
+      }
+
+      // ★重要：XPが「ほぼ上がらない」原因
+      // gemを吸引しているのに、回収判定が無いので永久に拾えない。
+      if (d < 18) {
+        this.killObj(g);
+        this.sfx.coin?.play?.();
+        this.addXP(1);
+        return;
       }
 
       if (g.x < -40 || g.x > W + 40 || g.y < -40 || g.y > H + 40) this.killObj(g);
     });
 
-    // ---- aura update ----
+    // ---- aura update (Gemini案) ----
     this.updateAura(dt);
 
     // ---- boss spawn ----
@@ -363,15 +402,14 @@ export class GameScene extends Phaser.Scene {
   fire() {
     if (this.S.paused || this.S.gameOver) return;
 
-    const targets = this.enemies.getChildren().filter(e => e.active);
-    if (targets.length === 0) return;
-
-    // nearest target
+    // ★改善：毎回 filter で配列生成すると GC が増えてカクつく。
+    // 走査しながら最寄りだけ拾う。
     let best = null, bestD = Infinity;
-    for (const e of targets) {
+    this.enemies.children.iterate(e => {
+      if (!e || !e.active) return;
       const d = (e.x - this.player.x) ** 2 + (e.y - this.player.y) ** 2;
       if (d < bestD) { bestD = d; best = e; }
-    }
+    });
     if (!best) return;
 
     const ang0 = Phaser.Math.Angle.Between(this.player.x, this.player.y, best.x, best.y);
@@ -392,8 +430,12 @@ export class GameScene extends Phaser.Scene {
       b.setVelocity(vx, vy);
     }
 
-    // SFX: 発射音（追加）
-    this.playShootSfx();
+    // 連射なので効果音は間引く
+    const now = this.time.now;
+    if (now - this._shotSfxAt > 90) {
+      this._shotSfxAt = now;
+      this.sfx.shot?.play?.();
+    }
   }
 
   spawnEnemy() {
@@ -449,7 +491,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(isCrit ? 70 : 40, isCrit ? 0.009 : 0.004);
     this.hitStop();
 
-    // ダメージ数字
+    // (Gemini案) ダメージ数字
     this.spawnDamageText(e.x, e.y - 18, dmg, isCrit);
 
     if (e.hp <= 0) this.killEnemy(e);
@@ -465,9 +507,7 @@ export class GameScene extends Phaser.Scene {
 
     this.cameras.main.shake(120, 0.013);
     this.pSpark.emitParticleAt(this.player.x, this.player.y, 10);
-
-    // SFX: 被弾音（指定）
-    this.playOnce("s_hurt", this.VOL.hurt);
+    this.sfx.hit?.play?.();
 
     // hit feedback
     this.spawnDamageText(this.player.x, this.player.y - 22, dmg, false, true);
@@ -488,11 +528,9 @@ export class GameScene extends Phaser.Scene {
     // gem drop
     const n = e.isBoss ? 18 : (1 + (Math.random() < 0.2 ? 1 : 0));
     for (let i = 0; i < n; i++) {
-      const g = this.gems.get(e.x, e.y, "gem");
+      const g = this.gems.get(e.x + Phaser.Math.Between(-10, 10), e.y + Phaser.Math.Between(-10, 10), "gem");
       if (!g) continue;
-
       g.setActive(true).setVisible(true);
-      g.setPosition(e.x + Phaser.Math.Between(-10, 10), e.y + Phaser.Math.Between(-10, 10));
       g.vx = Phaser.Math.Between(-60, 60);
       g.vy = Phaser.Math.Between(-60, 60);
       g.setDepth(10);
@@ -508,36 +546,24 @@ export class GameScene extends Phaser.Scene {
 
     // xp by kills (少しだけ)
     if (Math.random() < (e.isBoss ? 1.0 : 0.06)) {
-      this.addXP(1, true);
+      this.addXP(1);
     }
   }
 
-  // playSfx=true のとき「経験値取得音」を鳴らす
-  addXP(n, playSfx = false) {
-    if (playSfx) this.playXpSfx();
-
+  addXP(n) {
     this.S.xp += n;
     while (this.S.xp >= this.S.xpNeed) {
       this.S.xp -= this.S.xpNeed;
       this.S.level += 1;
-
-      // SFX: レベルアップ（指定）
-      this.playOnce("s_level", this.VOL.level);
-
       this.S.xpNeed = Math.floor(this.S.xpNeed * this.T.xpNeedMul + this.T.xpNeedAdd);
       this.openChoice();
     }
     this.drawUI();
   }
 
-  collectGem(g) {
-    this.killObj(g);
-    // 経験値獲得音（指定）
-    this.addXP(1, true);
-  }
-
   openChoice() {
     this.S.paused = true;
+    this.sfx.level?.play?.();
 
     const pool = [
       { name: "連射 +20%", apply: () => this.setFireInterval(Math.max(50, Math.floor(this.T.fireIntervalMs * 0.82))) },
@@ -601,15 +627,12 @@ export class GameScene extends Phaser.Scene {
     this.fireTimer?.paused = true;
     this.spawnTimer?.paused = true;
     this.bossAttackTimer?.paused = true;
-
-    // BGM停止 + ゲームオーバー音（指定）
-    try { this.bgm?.stop(); } catch (_) {}
-    this.playOnce("s_gameover", this.VOL.gameOver);
-
+    this.sfx.over?.play?.();
+    this.sfx.bgm?.stop?.();
     this.drawUI(true);
   }
 
-  // ----------------- Boss -----------------
+  // ----------------- Boss (Gemini案) -----------------
   spawnBoss() {
     if (this.S.gameOver) return;
     if (this.S.bossAlive) return;
@@ -677,6 +700,7 @@ export class GameScene extends Phaser.Scene {
       s.baseVy = vy;
       s.life = 1600;
 
+      // freeze状態でもupdateでvelocityを再設定するのでここはbaseのみ
       s.setVelocity(vx, vy);
     }
 
@@ -684,7 +708,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(60, 0.006);
   }
 
-  // ----------------- Aura Weapon -----------------
+  // ----------------- Aura Weapon (Gemini案) -----------------
   initAura(rebuild = false) {
     // 既存破棄
     if (rebuild) {
@@ -718,13 +742,14 @@ export class GameScene extends Phaser.Scene {
       p.y = this.player.y + Math.sin(p._angle) * this.T.auraRadius;
     }
 
-    // hit enemies in range
+    // hit enemies in range (manual overlap for speed control)
     const now = this.time.now;
     const tick = this.T.auraTickMs;
 
     this.enemies.children.iterate(e => {
       if (!e || !e.active) return;
 
+      // boss too
       const eid = e.eid || (e.eid = Phaser.Math.RND.uuid());
       const last = this.auraHitCD.get(eid) || 0;
       if (now - last < tick) return;
@@ -864,30 +889,6 @@ export class GameScene extends Phaser.Scene {
     this.vignette.fillRect(0, H - edge, W, edge);
     this.vignette.fillRect(0, 0, edge, H);
     this.vignette.fillRect(W - edge, 0, edge, H);
-  }
-
-  // ----------------- Audio Helpers（追加） -----------------
-  playOnce(key, volume) {
-    if (this.sound.locked) return;
-    try {
-      this.sound.play(key, { volume });
-    } catch (_) { /* noop */ }
-  }
-
-  playXpSfx() {
-    if (this.sound.locked) return;
-    const now = this.time.now;
-    if (now - this.lastXpSfxAt < 70) return; // 連打抑制
-    this.lastXpSfxAt = now;
-    this.playOnce("s_xp", this.VOL.xp);
-  }
-
-  playShootSfx() {
-    if (this.sound.locked) return;
-    const now = this.time.now;
-    if (now - this.lastShootSfxAt < 55) return; // 連打抑制（連射が速くなった時の耳対策）
-    this.lastShootSfxAt = now;
-    this.playOnce("s_shoot", this.VOL.shoot);
   }
 
   // ----------------- Utils -----------------
